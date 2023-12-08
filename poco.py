@@ -1,3 +1,4 @@
+import streamlit as st
 import imaplib
 import email
 from email.header import decode_header
@@ -41,20 +42,24 @@ def download_attachments(username, password, from_email, since_date, save_dir):
             with open(filepath, 'wb') as f:
                 f.write(part.get_payload(decode=True))
             
-            print(f"Attachment saved: {filepath}")
+            st.write(f"Attachment saved: {filepath}")
 
     # Logout from your Gmail account
     mail.logout()
 
+def main():
+    st.title("Gmail Attachment Downloader")
+
+    gmail_username = st.text_input("Gmail Username")
+    gmail_password = st.text_input("Gmail Password", type="password")
+    sender_email = st.text_input("Sender's Email")
+    since_date = st.date_input("Since Date")
+    save_directory = st.text_input("Save Directory")
+
+    if st.button("Download Attachments"):
+        if not os.path.exists(save_directory):
+            os.makedirs(save_directory)
+        download_attachments(gmail_username, gmail_password, sender_email, since_date.strftime("%d-%b-%Y"), save_directory)
+
 if __name__ == "__main__":
-    # Replace these with your Gmail credentials and search parameters
-    gmail_username = "your_username@gmail.com"
-    gmail_password = "your_password"
-    sender_email = "example@gmail.com"
-    since_date = "01-Jan-2023"
-    save_directory = "attachments"
-
-    if not os.path.exists(save_directory):
-        os.makedirs(save_directory)
-
-    download_attachments(gmail_username, gmail_password, sender_email, since_date, save_directory)
+    main()
