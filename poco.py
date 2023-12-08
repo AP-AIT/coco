@@ -1,77 +1,75 @@
 import streamlit as st
-import fitz  # PyMuPDF
-import re
-import pandas as pd
+import imaplib
+import email
 import base64
+import io
+import fitz  # PyMuPDF
 
 # Streamlit app title
-st.title("PDF Data Extractor")
+st.title("PDF Attachment Extractor")
 
-# Create input fields for the user and password
-pdf_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+# Create input fields for the user, password, and search criteria
+user = st.text_input("Enter your email address")
+password = st.text_input("Enter your email password", type="password")
+search_criteria = st.text_input("Enter search criteria")
 
-# Function to extract information from PDF content
-def extract_info_from_pdf(pdf_content):
-    doc = fitz.open(pdf_content)
-    
-    info = {
-        "Name": None,
-        "Email": None,
-        "Workshop Detail": None,
-        "Date": None,
-        "Mobile No.": None
-    }
-
-    for page_num in range(doc.page_count):
-        page = doc[page_num]
-        text = page.get_text()
-
-        # Use regular expressions to extract information (modify as needed)
-        name_match = re.search(r'Name: (.+)', text, re.IGNORECASE)
-        if name_match:
-            info["Name"] = name_match.group(1).strip()
-
-        email_match = re.search(r'Email: (.+)', text, re.IGNORECASE)
-        if email_match:
-            info["Email"] = email_match.group(1).strip()
-
-        workshop_match = re.search(r'Workshop Detail: (.+)', text, re.IGNORECASE)
-        if workshop_match:
-            info["Workshop Detail"] = workshop_match.group(1).strip()
-
-        date_match = re.search(r'Date: (.+)', text, re.IGNORECASE)
-        if date_match:
-            info["Date"] = date_match.group(1).strip()
-
-        mobile_match = re.search(r'Mobile No.: (.+)', text, re.IGNORECASE)
-        if mobile_match:
-            info["Mobile No."] = mobile_match.group(1).strip()
-
-    return info
-
-if pdf_file is not None and st.button("Extract and Generate Excel"):
+# Function to extract PDF attachments from emails
+def extract_pdf_attachments(user, password, search_criteria):
     try:
-        pdf_content = pdf_file.read()
-        info = extract_info_from_pdf(pdf_content)
+        # URL for IMAP connection
+        imap_url = 'imap.gmail.com'
 
-        # Create a DataFrame from the extracted info
-        df = pd.DataFrame([info])
+        # Connection with GMAIL using SSL
+        my_mail = imaplib.IMAP4_SSL(imap_url)
 
-        # Display the extracted data
-        st.write("Data extracted from the PDF:")
-        st.write(df)
+        # Log in using user and password
+        my_mail.login(user, password)
 
-        if st.button("Download Excel File"):
-            excel_file = df.to_excel('extracted_data.xlsx', index=False, engine='openpyxl')
-            if excel_file:
-                with open('extracted_data.xlsx', 'rb') as file:
-                    st.download_button(
-                        label="Click to download Excel file",
-                        data=file,
-                        key='download-excel'
-                    )
+        # Select the Inbox to fetch messages
+        my_mail.select('inbox')
 
-        st.success("Excel file has been generated and is ready for download.")
+        # Define the key and value for email search
+        key = 'SUBJECT'
+        value = search_criteria
+        _, data = my_mail.search(None, key, value)
+
+        mail_id_list = data[0].split()
+
+        pdf_list = []
+
+        # Iterate through messages and extract PDF attachments
+        for num in mail_id_list:
+            typ, msg_data = my_mail.fetch(num, '(RFC822)')
+            msg = email.message_from_bytes(msg_data[0][1])
+
+            for part in msg.walk():
+                if part.get_content_type() == 'application/pdf':
+                    pdf_content = part.get_payload(decode=True)
+                    pdf_list.append(pdf_content)
+
+        return pdf_list
 
     except Exception as e:
         st.error(f"Error: {e}")
+        return []
+
+# Allow the user to trigger the PDF extraction
+if st.button("Extract PDFs"):
+    pdfs = extract_pdf_attachments(user, password, search_criteria)
+
+    if pdfs:
+        st.success(f"Found {len(pdfs)} PDF attachments.")
+        
+        # Extract text from PDFs (modify as needed)
+        for idx, pdf_content in enumerate(pdfs, start=1):
+            pdf_stream = io.BytesIO(pdf_content)
+            pdf_doc = fitz.open(pdf_stream)
+            pdf_text = ""
+            for page in pdf_doc.pages():
+                pdf_text += page.get_text()
+
+            st.write(f"Text from PDF {idx}:")
+            st.write(pdf_text)
+
+    else:
+        st.warning("No PDF attachments found.")
