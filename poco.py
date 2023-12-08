@@ -1,65 +1,77 @@
 import streamlit as st
-import imaplib
-import email
-from email.header import decode_header
-import os
+import fitz  # PyMuPDF
+import re
+import pandas as pd
+import base64
 
-def download_attachments(username, password, from_email, since_date, save_dir):
-    # Connect to the Gmail server
-    mail = imaplib.IMAP4_SSL("imap.gmail.com")
+# Streamlit app title
+st.title("PDF Data Extractor")
+
+# Create input fields for the user and password
+pdf_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+
+# Function to extract information from PDF content
+def extract_info_from_pdf(pdf_content):
+    doc = fitz.open(pdf_content)
     
-    # Log in to your Gmail account
-    mail.login(username, password)
-    
-    # Select the mailbox you want to search (e.g., 'inbox')
-    mail.select("inbox")
+    info = {
+        "Name": None,
+        "Email": None,
+        "Workshop Detail": None,
+        "Date": None,
+        "Mobile No.": None
+    }
 
-    # Search for emails from a specific sender since a particular date
-    result, data = mail.search(None, f'(FROM "{from_email}" SINCE "{since_date}")')
+    for page_num in range(doc.page_count):
+        page = doc[page_num]
+        text = page.get_text()
 
-    # Iterate through the list of email IDs
-    for num in data[0].split():
-        # Fetch the email by ID
-        result, message_data = mail.fetch(num, "(RFC822)")
-        raw_email = message_data[0][1]
+        # Use regular expressions to extract information (modify as needed)
+        name_match = re.search(r'Name: (.+)', text, re.IGNORECASE)
+        if name_match:
+            info["Name"] = name_match.group(1).strip()
 
-        # Parse the raw email
-        msg = email.message_from_bytes(raw_email)
+        email_match = re.search(r'Email: (.+)', text, re.IGNORECASE)
+        if email_match:
+            info["Email"] = email_match.group(1).strip()
 
-        # Iterate through the email parts
-        for part in msg.walk():
-            if part.get_content_maintype() == 'multipart':
-                continue
-            if part.get('Content-Disposition') is None:
-                continue
+        workshop_match = re.search(r'Workshop Detail: (.+)', text, re.IGNORECASE)
+        if workshop_match:
+            info["Workshop Detail"] = workshop_match.group(1).strip()
 
-            # Save the attachment
-            filename, encoding = decode_header(part.get_filename())[0]
-            if isinstance(filename, bytes):
-                filename = filename.decode(encoding or 'utf-8')
-            filepath = os.path.join(save_dir, filename)
-            
-            with open(filepath, 'wb') as f:
-                f.write(part.get_payload(decode=True))
-            
-            st.write(f"Attachment saved: {filepath}")
+        date_match = re.search(r'Date: (.+)', text, re.IGNORECASE)
+        if date_match:
+            info["Date"] = date_match.group(1).strip()
 
-    # Logout from your Gmail account
-    mail.logout()
+        mobile_match = re.search(r'Mobile No.: (.+)', text, re.IGNORECASE)
+        if mobile_match:
+            info["Mobile No."] = mobile_match.group(1).strip()
 
-def main():
-    st.title("Gmail Attachment Downloader")
+    return info
 
-    gmail_username = st.text_input("Gmail Username")
-    gmail_password = st.text_input("Gmail Password", type="password")
-    sender_email = st.text_input("Sender's Email")
-    since_date = st.date_input("Since Date")
-    save_directory = st.text_input("Save Directory")
+if pdf_file is not None and st.button("Extract and Generate Excel"):
+    try:
+        pdf_content = pdf_file.read()
+        info = extract_info_from_pdf(pdf_content)
 
-    if st.button("Download Attachments"):
-        if not os.path.exists(save_directory):
-            os.makedirs(save_directory)
-        download_attachments(gmail_username, gmail_password, sender_email, since_date.strftime("%d-%b-%Y"), save_directory)
+        # Create a DataFrame from the extracted info
+        df = pd.DataFrame([info])
 
-if __name__ == "__main__":
-    main()
+        # Display the extracted data
+        st.write("Data extracted from the PDF:")
+        st.write(df)
+
+        if st.button("Download Excel File"):
+            excel_file = df.to_excel('extracted_data.xlsx', index=False, engine='openpyxl')
+            if excel_file:
+                with open('extracted_data.xlsx', 'rb') as file:
+                    st.download_button(
+                        label="Click to download Excel file",
+                        data=file,
+                        key='download-excel'
+                    )
+
+        st.success("Excel file has been generated and is ready for download.")
+
+    except Exception as e:
+        st.error(f"Error: {e}")
