@@ -1,5 +1,5 @@
 streamlit
-pyzmail36==1.0.4
+pyzmail36>=1.0.4,<=1.0.10
 PyPDF2==1.26.0
 gensim==4.1.2
 sumy==0.8.1
