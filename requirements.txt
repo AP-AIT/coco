@@ -1,6 +1,6 @@
-streamlit
+streamlit==1.29.0
 pyzmail36==1.0.4
-PyPDF2== 3.0.1
+PyPDF2== 1.26.0
 gensim==4.1.2
 sumy==0.8.1
 
